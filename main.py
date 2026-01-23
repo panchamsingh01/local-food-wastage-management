@@ -1,10 +1,8 @@
-import sqlite3 as sq
-import pandas as pd
+from src.db import get_connection
 
-print("Database creation")
+print("Testing database connection...")
 
-connection = sq.connect("database/food_waste.db")
+conn = get_connection()
+print("Database connection successful")
 
-print("Database created")
-
-connection.close()
+conn.close()
