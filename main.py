@@ -1,8 +1,32 @@
-from src.db import get_connection
+from src.db import (
+    create_providers_table,
+    create_receivers_table,
+    create_food_listings_table,
+    create_claims_table
+)
+from src.load_data import (
+    load_providers,
+    load_receivers,
+    load_food_listings,
+    load_claims
+)
 
-print("Testing database connection...")
+print("Creating database tables...")
+create_providers_table()
+create_receivers_table()
+create_food_listings_table()
+create_claims_table()
 
-conn = get_connection()
-print("Database connection successful")
+print("Loading providers data...")
+load_providers()
 
-conn.close()
+print("Loading receivers data...")
+load_receivers()
+
+print("Loading food listings data...")
+load_food_listings()
+
+print("Loading claims data...")
+load_claims()
+
+print("All data loaded successfully")
