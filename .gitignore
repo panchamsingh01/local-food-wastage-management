@@ -1,12 +1,13 @@
 # Virtual environment
 .venv/
+venv/
 
-# Database files
+# Database
 database/*.db
 
 # Python cache
 __pycache__/
 *.pyc
 
-# OS files
-.DS_Store
+# Streamlit
+.streamlit/

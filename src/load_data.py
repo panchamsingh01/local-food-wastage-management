@@ -1,10 +1,11 @@
 import pandas as pd
-from src.db import get_connection
+from src.db import get_connection, initialize_database
+
+# =========================================================
+# LOAD PROVIDERS (CSV → providers)
+# =========================================================
 
 def load_providers():
-    """
-    Loads providers data from CSV into the providers table.
-    """
     df = pd.read_csv("data/providers_data.csv")
 
     conn = get_connection()
@@ -19,7 +20,8 @@ def load_providers():
                 address,
                 city,
                 contact
-            ) VALUES (?, ?, ?, ?, ?, ?)
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
         """, (
             int(row["Provider_ID"]),
             row["Name"],
@@ -31,13 +33,16 @@ def load_providers():
 
     conn.commit()
     conn.close()
-    
-    
+
+
+# =========================================================
+# LOAD RECEIVERS (CSV → receivers)
+# NOTE:
+# - CSV receivers are demo / historical
+# - Live users create their own receiver profiles
+# =========================================================
 
 def load_receivers():
-    """
-    Loads receivers data from CSV into the receivers table.
-    """
     df = pd.read_csv("data/receivers_data.csv")
 
     conn = get_connection()
@@ -48,14 +53,13 @@ def load_receivers():
             INSERT OR IGNORE INTO receivers (
                 receiver_id,
                 name,
-                type,
                 city,
                 contact
-            ) VALUES (?, ?, ?, ?, ?)
+            )
+            VALUES (?, ?, ?, ?)
         """, (
             int(row["Receiver_ID"]),
             row["Name"],
-            row["Type"],
             row["City"],
             row["Contact"]
         ))
@@ -64,10 +68,11 @@ def load_receivers():
     conn.close()
 
 
+# =========================================================
+# LOAD FOOD LISTINGS
+# =========================================================
+
 def load_food_listings():
-    """
-    Loads food listings data from CSV into the food_listings table.
-    """
     df = pd.read_csv("data/food_listings_data.csv")
 
     conn = get_connection()
@@ -85,7 +90,8 @@ def load_food_listings():
                 location,
                 food_type,
                 meal_type
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             int(row["Food_ID"]),
             row["Food_Name"],
@@ -102,10 +108,11 @@ def load_food_listings():
     conn.close()
 
 
+# =========================================================
+# LOAD CLAIMS
+# =========================================================
+
 def load_claims():
-    """
-    Loads claims data from CSV into the claims table.
-    """
     df = pd.read_csv("data/claims_data.csv")
 
     conn = get_connection()
@@ -119,7 +126,8 @@ def load_claims():
                 receiver_id,
                 status,
                 timestamp
-            ) VALUES (?, ?, ?, ?, ?)
+            )
+            VALUES (?, ?, ?, ?, ?)
         """, (
             int(row["Claim_ID"]),
             int(row["Food_ID"]),
@@ -130,3 +138,25 @@ def load_claims():
 
     conn.commit()
     conn.close()
+
+
+# =========================================================
+# MASTER LOADER (RUN ONCE)
+# =========================================================
+
+def load_all_data():
+    """
+    Initializes database and loads demo CSV data.
+    Run ONLY ONCE during initial project setup.
+    """
+    initialize_database()
+    load_providers()
+    load_receivers()
+    load_food_listings()
+    load_claims()
+
+    print("✅ Database initialized and demo data loaded successfully")
+
+
+if __name__ == "__main__":
+    load_all_data()

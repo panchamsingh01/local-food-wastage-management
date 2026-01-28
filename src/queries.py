@@ -1,305 +1,272 @@
 from src.db import get_connection
+from datetime import datetime
 
-def count_providers_and_receivers_by_city():
-    """
-    Returns the number of food providers and receivers in each city.
-    """
+# =========================================================
+# AUTHENTICATION
+# =========================================================
+
+def create_user(username, password, role="user"):
     conn = get_connection()
     cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO users (username, password, role)
+            VALUES (?, ?, ?)
+        """, (username, password, role))
+        conn.commit()
+        return True
+    except:
+        return False
+    finally:
+        conn.close()
 
-    query = """
-        SELECT city,
-               COUNT(*) AS count,
-               'Provider' AS role
-        FROM providers
-        GROUP BY city
 
-        UNION ALL
-
-        SELECT city,
-               COUNT(*) AS count,
-               'Receiver' AS role
-        FROM receivers
-        GROUP BY city
-    """
-
-    cursor.execute(query)
-    results = cursor.fetchall()
-
+def authenticate_user(username, password):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT user_id, username, role, linked_id
+        FROM users
+        WHERE username = ? AND password = ?
+    """, (username, password))
+    user = cursor.fetchone()
     conn.close()
-    return results
+    return user
 
-def total_food_contribution_by_provider_type():
-    """
-    Returns total quantity of food contributed by each provider type.
-    """
+
+# =========================================================
+# RECEIVER CRUD (USER ↔ RECEIVER LINKED)
+# =========================================================
+
+def create_receiver(user_id, name, city, contact):
     conn = get_connection()
     cursor = conn.cursor()
 
-    query = """
-        SELECT provider_type,
-               SUM(quantity) AS total_quantity
+    cursor.execute("""
+        INSERT INTO receivers (name, city, contact)
+        VALUES (?, ?, ?)
+    """, (name, city, contact))
+
+    receiver_id = cursor.lastrowid
+
+    cursor.execute("""
+        UPDATE users
+        SET linked_id = ?
+        WHERE user_id = ?
+    """, (receiver_id, user_id))
+
+    conn.commit()
+    conn.close()
+
+
+def update_receiver(receiver_id, name, city, contact):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE receivers
+        SET name = ?, city = ?, contact = ?
+        WHERE receiver_id = ?
+    """, (name, city, contact, receiver_id))
+    conn.commit()
+    conn.close()
+
+
+def get_receiver_by_user(user_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT r.receiver_id, r.name, r.city, r.contact
+        FROM receivers r
+        JOIN users u ON u.linked_id = r.receiver_id
+        WHERE u.user_id = ?
+    """, (user_id,))
+    data = cursor.fetchone()
+    conn.close()
+    return data
+
+
+# =========================================================
+# PROVIDER / FOOD LISTINGS (CRUD)
+# =========================================================
+
+def create_food_listing(
+    food_name, quantity, expiry_date,
+    provider_id, provider_type,
+    location, food_type, meal_type
+):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO food_listings
+        (food_name, quantity, expiry_date, provider_id,
+         provider_type, location, food_type, meal_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        food_name, quantity, expiry_date,
+        provider_id, provider_type,
+        location, food_type, meal_type
+    ))
+    conn.commit()
+    conn.close()
+
+
+# =========================================================
+# FOOD DISCOVERY
+# =========================================================
+
+def get_food_by_city(city):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT food_id, food_name, quantity, expiry_date,
+               provider_id, location, food_type, meal_type
         FROM food_listings
-        GROUP BY provider_type
-        ORDER BY total_quantity DESC
-    """
-
-    cursor.execute(query)
-    results = cursor.fetchall()
-
+        WHERE quantity > 0
+          AND LOWER(location) = LOWER(?)
+        ORDER BY expiry_date
+    """, (city,))
+    data = cursor.fetchall()
     conn.close()
-    return results
+    return data
 
 
-def get_providers_contact_by_city(city):
-    """
-    Returns contact details of food providers in a specific city.
-    """
+def get_available_food():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT food_id, food_name, quantity, location,
+               food_type, meal_type, expiry_date
+        FROM food_listings
+        WHERE quantity > 0
+        ORDER BY expiry_date
+    """)
+    data = cursor.fetchall()
+    conn.close()
+    return data
+
+
+# =========================================================
+# CLAIMS (FULL DATA IMPACT)
+# =========================================================
+
+def create_claim(food_id, receiver_id):
     conn = get_connection()
     cursor = conn.cursor()
 
-    query = """
-        SELECT name,
-               address,
-               contact
-        FROM providers
-        WHERE city = ?
-    """
+    cursor.execute("""
+        INSERT INTO claims (food_id, receiver_id, status, timestamp)
+        VALUES (?, ?, 'Completed', ?)
+    """, (food_id, receiver_id, datetime.now()))
 
-    cursor.execute(query, (city,))
-    results = cursor.fetchall()
+    cursor.execute("""
+        UPDATE food_listings
+        SET quantity = quantity - 1
+        WHERE food_id = ? AND quantity > 0
+    """, (food_id,))
 
+    conn.commit()
     conn.close()
-    return results
 
 
-def receivers_with_most_claims():
-    """
-    Returns receivers ordered by number of food claims made.
-    """
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    query = """
-        SELECT r.name,
-               r.city,
-               COUNT(c.claim_id) AS total_claims
-        FROM claims c
-        JOIN receivers r
-            ON c.receiver_id = r.receiver_id
-        GROUP BY r.receiver_id
-        ORDER BY total_claims DESC
-    """
-
-    cursor.execute(query)
-    results = cursor.fetchall()
-
-    conn.close()
-    return results
+# =========================================================
+# HOME PAGE ANALYTICS
+# =========================================================
 
 def total_food_available():
-    """
-    Returns the total quantity of food available from all providers.
-    """
     conn = get_connection()
     cursor = conn.cursor()
-
-    query = """
-        SELECT SUM(quantity) AS total_quantity
-        FROM food_listings
-    """
-
-    cursor.execute(query)
-    result = cursor.fetchone()
-
+    cursor.execute("SELECT COALESCE(SUM(quantity), 0) FROM food_listings")
+    total = cursor.fetchone()[0]
     conn.close()
-    return result[0]
-
-def city_with_highest_food_listings():
-    """
-    Returns the city with the highest number of food listings.
-    """
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    query = """
-        SELECT location,
-               COUNT(*) AS total_listings
-        FROM food_listings
-        GROUP BY location
-        ORDER BY total_listings DESC
-        LIMIT 1
-    """
-
-    cursor.execute(query)
-    result = cursor.fetchone()
-
-    conn.close()
-    return result
+    return total
 
 
 def most_common_food_types():
-    """
-    Returns food types ordered by how frequently they appear.
-    """
     conn = get_connection()
     cursor = conn.cursor()
-
-    query = """
-        SELECT food_type,
-               COUNT(*) AS frequency
+    cursor.execute("""
+        SELECT food_type, COUNT(*)
         FROM food_listings
         GROUP BY food_type
-        ORDER BY frequency DESC
-    """
-
-    cursor.execute(query)
-    results = cursor.fetchall()
-
+        ORDER BY COUNT(*) DESC
+    """)
+    data = cursor.fetchall()
     conn.close()
-    return results
-
-
-def claims_per_food_item():
-    """
-    Returns number of claims made for each food item.
-    """
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    query = """
-        SELECT f.food_name,
-               COUNT(c.claim_id) AS total_claims
-        FROM claims c
-        JOIN food_listings f
-            ON c.food_id = f.food_id
-        GROUP BY f.food_id
-        ORDER BY total_claims DESC
-    """
-
-    cursor.execute(query)
-    results = cursor.fetchall()
-
-    conn.close()
-    return results
-
-
-def provider_with_most_successful_claims():
-    """
-    Returns the provider with the highest number of successful (completed) food claims.
-    """
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    query = """
-        SELECT p.name,
-               COUNT(c.claim_id) AS successful_claims
-        FROM claims c
-        JOIN food_listings f
-            ON c.food_id = f.food_id
-        JOIN providers p
-            ON f.provider_id = p.provider_id
-        WHERE c.status = 'Completed'
-        GROUP BY p.provider_id
-        ORDER BY successful_claims DESC
-        LIMIT 1
-    """
-
-    cursor.execute(query)
-    result = cursor.fetchone()
-
-    conn.close()
-    return result
+    return data
 
 
 def claim_status_percentage():
-    """
-    Returns percentage distribution of claim statuses.
-    """
     conn = get_connection()
     cursor = conn.cursor()
-
-    query = """
+    cursor.execute("""
         SELECT status,
-               COUNT(*) * 100.0 / (SELECT COUNT(*) FROM claims) AS percentage
+               COUNT(*) * 100.0 / (SELECT COUNT(*) FROM claims)
         FROM claims
         GROUP BY status
-    """
-
-    cursor.execute(query)
-    results = cursor.fetchall()
-
+    """)
+    data = cursor.fetchall()
     conn.close()
-    return results
+    return data
 
-def average_food_quantity_per_receiver():
-    """
-    Returns the average quantity of food claimed per receiver.
-    """
+
+# =========================================================
+# EDA / RANKINGS / TRENDS
+# =========================================================
+
+def top_receivers_by_claims(limit=5):
     conn = get_connection()
     cursor = conn.cursor()
-
-    query = """
-        SELECT AVG(receiver_total) AS average_quantity
-        FROM (
-            SELECT c.receiver_id,
-                   SUM(f.quantity) AS receiver_total
-            FROM claims c
-            JOIN food_listings f
-                ON c.food_id = f.food_id
-            GROUP BY c.receiver_id
-        )
-    """
-
-    cursor.execute(query)
-    result = cursor.fetchone()
-
-    conn.close()
-    return result[0]
-
-
-def most_claimed_meal_type():
-    """
-    Returns meal types ordered by number of claims.
-    """
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    query = """
-        SELECT f.meal_type,
-               COUNT(c.claim_id) AS total_claims
+    cursor.execute("""
+        SELECT r.name, COUNT(c.claim_id) AS total_claims
         FROM claims c
-        JOIN food_listings f
-            ON c.food_id = f.food_id
-        GROUP BY f.meal_type
+        JOIN receivers r ON c.receiver_id = r.receiver_id
+        GROUP BY r.receiver_id
         ORDER BY total_claims DESC
-    """
-
-    cursor.execute(query)
-    results = cursor.fetchall()
-
+        LIMIT ?
+    """, (limit,))
+    data = cursor.fetchall()
     conn.close()
-    return results
+    return data
 
-def total_food_donated_by_provider():
-    """
-    Returns total quantity of food donated by each provider.
-    """
+
+def top_providers_by_donation(limit=5):
     conn = get_connection()
     cursor = conn.cursor()
-
-    query = """
-        SELECT p.name,
-               SUM(f.quantity) AS total_quantity
-        FROM food_listings f
-        JOIN providers p
-            ON f.provider_id = p.provider_id
-        GROUP BY p.provider_id
-        ORDER BY total_quantity DESC
-    """
-
-    cursor.execute(query)
-    results = cursor.fetchall()
-
+    cursor.execute("""
+        SELECT provider_id, SUM(quantity) AS total_donated
+        FROM food_listings
+        GROUP BY provider_id
+        ORDER BY total_donated DESC
+        LIMIT ?
+    """, (limit,))
+    data = cursor.fetchall()
     conn.close()
-    return results
+    return data
+
+
+def food_by_city():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT location, SUM(quantity)
+        FROM food_listings
+        GROUP BY location
+        ORDER BY SUM(quantity) DESC
+    """)
+    data = cursor.fetchall()
+    conn.close()
+    return data
+
+
+def claims_over_time():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT DATE(timestamp) AS date, COUNT(*) AS total_claims
+        FROM claims
+        GROUP BY DATE(timestamp)
+        ORDER BY DATE(timestamp)
+    """)
+    data = cursor.fetchall()
+    conn.close()
+    return data

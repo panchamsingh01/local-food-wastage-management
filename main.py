@@ -1,40 +1,23 @@
-# from src.db import (
-#     create_providers_table,
-#     create_receivers_table,
-#     create_food_listings_table,
-#     create_claims_table
-# )
-# from src.load_data import (
-#     load_providers,
-#     load_receivers,
-#     load_food_listings,
-#     load_claims
-# )
+"""
+main.py
+---------
+Initializes database tables and loads initial CSV data.
+Run this file ONLY ONCE during project setup.
+"""
 
-# print("Creating database tables...")
-# create_providers_table()
-# create_receivers_table()
-# create_food_listings_table()
-# create_claims_table()
+from src.db import initialize_database
+from src.load_data import load_all_data
 
-# print("Loading providers data...")
-# load_providers()
 
-# print("Loading receivers data...")
-# load_receivers()
+def main():
+    print("🚀 Initializing database...")
+    initialize_database()
 
-# print("Loading food listings data...")
-# load_food_listings()
+    print("📥 Loading initial dataset...")
+    load_all_data()
 
-# print("Loading claims data...")
-# load_claims()
+    print("✅ Database setup and data loading completed successfully!")
 
-# print("All data loaded successfully")
 
-from src.queries import total_food_donated_by_provider
-
-results = total_food_donated_by_provider()
-
-print("Total food donated by each provider:")
-for row in results:
-    print(row)
+if __name__ == "__main__":
+    main()

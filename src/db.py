@@ -1,27 +1,60 @@
 import sqlite3
 import os
 
-DB_PATH = "database/food_waste.db"
+# =========================================================
+# DATABASE CONFIG
+# =========================================================
+
+DB_FOLDER = "database"
+DB_PATH = os.path.join(DB_FOLDER, "food_waste.db")
+
+
+# =========================================================
+# CONNECTION
+# =========================================================
 
 def get_connection():
     """
     Creates and returns a SQLite database connection.
-    Ensures database folder exists before connecting.
+    Ensures database folder exists.
+    Enables foreign key constraints.
     """
-    os.makedirs("database", exist_ok=True)
-    return sqlite3.connect(DB_PATH)
+    os.makedirs(DB_FOLDER, exist_ok=True)
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn.execute("PRAGMA foreign_keys = ON;")
+    return conn
+
+
+# =========================================================
+# TABLE CREATION
+# =========================================================
+
+def create_users_table():
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL,
+            role TEXT DEFAULT 'user',
+            linked_id INTEGER,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    conn.commit()
+    conn.close()
 
 
 def create_providers_table():
-    """
-    Creates the providers table in the database.
-    """
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS providers (
-            provider_id INTEGER PRIMARY KEY,
+            provider_id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             type TEXT,
             address TEXT,
@@ -36,18 +69,21 @@ def create_providers_table():
 
 def create_receivers_table():
     """
-    Creates the receivers table in the database.
+    Receiver profile created by logged-in users.
+    One-to-one mapping with users table.
     """
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS receivers (
-            receiver_id INTEGER PRIMARY KEY,
+            receiver_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER UNIQUE,
             name TEXT NOT NULL,
-            type TEXT,
-            city TEXT,
-            contact TEXT
+            city TEXT NOT NULL,
+            contact TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(user_id)
         )
     """)
 
@@ -56,45 +92,60 @@ def create_receivers_table():
 
 
 def create_food_listings_table():
-    """
-    Creates the food_listings table in the database.
-    """
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS food_listings (
-            food_id INTEGER PRIMARY KEY,
+            food_id INTEGER PRIMARY KEY AUTOINCREMENT,
             food_name TEXT NOT NULL,
-            quantity INTEGER NOT NULL,
-            expiry_date TEXT,
+            quantity INTEGER NOT NULL CHECK(quantity >= 0),
+            expiry_date TEXT NOT NULL,
             provider_id INTEGER,
             provider_type TEXT,
-            location TEXT,
-            food_type TEXT,
-            meal_type TEXT
+            location TEXT NOT NULL,
+            food_type TEXT NOT NULL,
+            meal_type TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(provider_id) REFERENCES providers(provider_id)
         )
     """)
 
     conn.commit()
     conn.close()
 
+
 def create_claims_table():
-    """
-    Creates the claims table in the database.
-    """
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS claims (
-            claim_id INTEGER PRIMARY KEY,
+            claim_id INTEGER PRIMARY KEY AUTOINCREMENT,
             food_id INTEGER NOT NULL,
             receiver_id INTEGER NOT NULL,
-            status TEXT NOT NULL,
-            timestamp TEXT NOT NULL
+            status TEXT CHECK(status IN ('Pending','Completed','Cancelled')) NOT NULL,
+            timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(food_id) REFERENCES food_listings(food_id),
+            FOREIGN KEY(receiver_id) REFERENCES receivers(receiver_id)
         )
     """)
 
     conn.commit()
     conn.close()
+
+
+# =========================================================
+# DATABASE INITIALIZER
+# =========================================================
+
+def initialize_database():
+    """
+    Initializes all database tables.
+    Safe to call multiple times (idempotent).
+    """
+    create_users_table()
+    create_providers_table()
+    create_receivers_table()
+    create_food_listings_table()
+    create_claims_table()
